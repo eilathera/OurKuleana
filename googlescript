@@ -1,0 +1,167 @@
+var ss = SpreadsheetApp.getActiveSpreadsheet();
+var reportSheet = ss.getSheetByName("Report");
+var reportEmailCol = reportSheet.getRange("B2:B").getValues();
+var startDate = reportSheet.getRange(5,1).getValue();
+var endDate = reportSheet.getRange(8,1).getValue();
+
+/**
+* Performs this function every time the booklet is updated. Creates columns in the Report sheet based on the information in colList
+*/
+function onEdit(){
+  /** Add the columns you want here. The two types are "isComplete" and "searchSheet"
+  * isComplete("NAME_OF_SHEET", "NAME_OF_HEADER")
+  * searchSheet("NAME_OF_SHEET", COLUMN_NUMBER, "NAME_OF_HEADER")
+  * --------------------- NOTES ---------------------
+  *  o COLUMN_NUMBER starts at 1 (i.e. A=1, B=2, etc.)
+  *  o Make sure there is a comma after every entry in colList and that there is NO comma after the last entry
+  */
+  //colList is an Array
+  
+  var colList = [
+    searchSheet("Code of Conduct",3,"First Name"),
+    searchSheet("Code of Conduct",4,"Last Name"),
+    isComplete("Code of Conduct", "Code of Conduct"),
+    isComplete("Responsible Use","Information Security"),
+    isComplete("Maintaining Drug Free", "Code of Conduct"),
+    
+    isComplete("Code of Conduct", "Responsible Use"),
+    isComplete("Responsible Use","Maintaining Drug Free"),
+    
+    isComplete("Code of Conduct", "Preventing workplace Violence"),
+    isComplete("Responsible Use","Appropriate Interactions with Students"),
+    
+    isComplete("Code of Conduct", "Culture of Safety"),
+    isComplete("Responsible Use","Child Abuse and Neglect")
+  ];
+    //  Logger.log(colList);
+    clearReportSheet(); //clears the content from column C onward to prevent any errors in writing
+    
+    var writeRange = reportSheet.getRange(1,3,colList[0].length,colList.length); //grabs the range that colList will write to
+  writeRange.setValues(transpose(colList)); //writes colList to writeRange
+}
+
+/**
+* Returns an array of values from the query sheet based on the following parameters
+* @param {string} lookUpSheetName - The name of the sheet you are searching
+* @param {int} colNumToSearch - The column number you want 
+* @param {string} outColHeader - The custom name you want the header of the output column on the Result sheet to be
+*/
+function searchSheet(lookUpSheetName, colNumToSearch, outColHeader){
+  var lookUpSheet = ss.getSheetByName(lookUpSheetName);
+  var rangeValues = lookUpSheet.getRange(1,1,lookUpSheet.getLastRow(),colNumToSearch).getValues();
+  var tempArr = [];
+  
+  tempArr.push([outColHeader]);
+  //  Logger.log(tempArr);
+  
+  for(i=0;i<reportEmailCol.length;i++){
+    if(reportEmailCol[i][0] === ""){
+      //      Logger.log(i + " Pushed empty cell");
+      tempArr.push([""]);
+    }
+    else{
+      var wasMatch = false;
+      for(j=1;j<rangeValues.length;j++){
+        if(reportEmailCol[i][0] === rangeValues[j][1]){
+          //          Logger.log("i: " + i);
+          //          Logger.log("j: " + j);
+          //          Logger.log("Checking: " + reportEmailCol[i][0] + " TO " + rangeValues[j][1]);
+          //          Logger.log("Pushing: " + rangeValues[j][colNumToSearch-1]);
+          tempArr.push([rangeValues[j][colNumToSearch-1]]);
+          wasMatch = true;
+          break;
+        }
+      }
+      if(wasMatch === false){
+        tempArr.push([""]);
+      }
+    }
+  }
+  //  Logger.log(tempArr);
+  return tempArr;
+}
+
+/**
+* Returns an array of "Complete" or "Incomplete" in the output column based on if there is a match on the input email
+* @param {string} lookUpSheetName - The name of the sheet you are searching
+* @param {string} outColHeader - The custom name you want the header of the output column on the Result sheet to be
+*/
+function isComplete(lookUpSheetName, outColHeader) {
+  var lookUpSheet = ss.getSheetByName(lookUpSheetName); //searches the spreadsheet for the sheet name specified and saves it to lookUpSheet
+  var rangeValues = lookUpSheet.getRange(1,1,lookUpSheet.getLastRow(),2).getValues(); //gets the dates and emails of the query data and saves it to rangeValues
+  var tempArr = []; //a temp array to store the "Complete" and "Incomplete" values to write onto outCol
+  
+  tempArr.push([outColHeader]); //adds the outColHeader to the tempArr
+  
+  //Itterates through the emails in Report and checks to see if the email written matches any emails in the specified lookUpSheet. the code iterates through ALL cells in the email column in the Results sheet regardless of if there's anything written in it. This avoids any errors in the event there are empty cells between filled cells.
+  for(i=0;i<reportEmailCol.length;i++){
+    //The tempArr must be the same size as the full output column. To do this, empty strings are pushed onto the stack to ensure the columns (tempArr and outCol) are the same size. If they are not the same size, the compiler will throw an "Incorrect Range Height" exception 
+    if(reportEmailCol[i][0] === ""){
+      //      Logger.log("Pushed empty cell");
+      tempArr.push([""]);
+    }
+    else{
+      var exists = false; //A bool to track if the email being searched for exists in the lookUpSheet. It is done this way because if the email doesn't exist, the "Incomplete" push to the array needs to happen outside of the for loop
+      for(j=0;j<rangeValues.length;j++){
+//        Logger.log("i: " + i);
+//        Logger.log("j: " + j);
+        if(reportEmailCol[i][0] === rangeValues[j][1]){
+//          Logger.log("Checking: " + reportEmailCol[i][0] + " TO " + rangeValues[j][1] + " AT " + rangeValues[j][0]);
+          if(dateValid(rangeValues[j][0])){
+            exists = true;
+            break;
+          }
+        }
+        else{
+          exists = false;
+        }
+      }
+      if(exists){
+        //        Logger.log("Email: " + reportEmailCol[i][0] + " exists!");
+        tempArr.push(["Complete"]);
+      }
+      else{
+        //        Logger.log("Email: " + reportEmailCol[i][0] + " does not exist!");
+        tempArr.push(["No Record"]);
+      }
+    }
+  }
+  //  Logger.log(tempArr);
+  return tempArr; //Sets the values in outCol to the values pushed to tempArr
+}
+
+/**
+* Takes in a date and returns true or false based on if the date falls within the range specified on the Result sheet. This function is used for the isComplete function and should not need to be touched
+* @param {Date} checkDate - The queried date being compared to the start and end dates on the Result sheet
+*/
+function dateValid(checkDate){
+//  Logger.log("Date to check: " + checkDate);
+//  Logger.log("Start date: " + startDate);
+//  Logger.log("End date: " + endDate);
+  if(checkDate.valueOf() >= startDate.valueOf() && checkDate.valueOf() <= endDate.valueOf()){
+//    Logger.log("true");
+    return true;
+  }
+  else{
+//    Logger.log("false: " + checkDate + " is before " + startDate + " or after " + endDate);
+    return false;
+  }
+}
+
+/**
+* Used to clear the report sheet of previously generated data. The rows and columns of what should be cleared are hard coded here
+*/
+function clearReportSheet(){
+  var clearRange = reportSheet.getRange(1,3,reportSheet.getLastRow(),reportSheet.getLastColumn()); //the first two params determine the upper-left cell of where the clear should begin to happen
+  clearRange.clearContent();
+}
+
+/**
+* Used to transpose the array to write. Otherwise, the array will write across a row rather than down a column. This should not need to be touched
+* @param {array} a - The array you want to transpose
+*/
+function transpose(a)
+{
+  return Object.keys(a[0]).map(function (c) { return a.map(function (r) { return r[c]; }); });
+}
+
